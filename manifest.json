@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Google AI Studio 汉化插件",
+  "version": "1.0",
+  "description": "将 Google AI Studio (aistudio.google.com) 的界面英文字符串替换为中文。",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://aistudio.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
