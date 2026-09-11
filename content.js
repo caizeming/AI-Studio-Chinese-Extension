@@ -515,12 +515,25 @@ if (typeof document !== "undefined") {
 
   const TRANSLATABLE_ATTRS = ["placeholder", "aria-label", "title", "data-tooltip"];
   const ATTR_SELECTOR = TRANSLATABLE_ATTRS.map((a) => `[${a}]`).join(",");
+  // 流式回复/长文本会随每次 characterData 变更被反复全量处理，导致 O(n²) 卡顿；
+  // 超过此长度的文本视为内容（而非 UI 标签），跳过翻译。
+  const MAX_TEXT_LEN = 300;
+
+  function isEditable(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    return el.isContentEditable || /^(TEXTAREA|INPUT)$/.test(el.tagName || "");
+  }
 
   // 翻译单个文本节点（保留首尾空白与图标前缀）
   function translateTextNode(node) {
     const original = node.nodeValue;
     if (!original || !original.trim()) return;
+    if (original.length > MAX_TEXT_LEN) return; // 内容文本（流式回复等），跳过
     if (containsChinese(original)) return; // 已是中文（或已被翻译），防循环
+
+    // 用户正在输入/编辑的区域内的文本跳过
+    const parent = node.parentNode;
+    if (isEditable(parent)) return;
 
     const core = original.trim();
     const leading = original.slice(0, original.length - original.trimStart().length);
@@ -535,6 +548,8 @@ if (typeof document !== "undefined") {
       body = body.slice(icon.length).trim();
     }
 
+    if (body.length > MAX_TEXT_LEN) return;
+
     const translated = translateText(body);
     if (translated !== null) {
       node.nodeValue = leading + icon + translated + trailing;
@@ -546,7 +561,8 @@ if (typeof document !== "undefined") {
     for (const attr of TRANSLATABLE_ATTRS) {
       if (!el.hasAttribute || !el.hasAttribute(attr)) continue;
       const val = el.getAttribute(attr);
-      if (!val || containsChinese(val)) continue;
+      if (!val || val.length > MAX_TEXT_LEN) continue;
+      if (containsChinese(val)) continue;
       const core = val.trim();
       const translated = translateText(core);
       if (translated !== null) {
@@ -576,6 +592,32 @@ if (typeof document !== "undefined") {
   // 初始遍历页面现有 DOM
   translateDOM(document.body);
 
+  // —— 性能优化：批处理 + 去重 ——
+  // 每次 mutation 立即翻译会导致同一批节点被反复处理；改为收集待处理集合，
+  // 用 requestAnimationFrame 每帧最多处理一次，且同一节点一帧内只处理一遍。
+  const pendingText = new Set();
+  const pendingEls = new Set();
+  const pendingRoots = new Set();
+  let scheduled = false;
+
+  function flush() {
+    scheduled = false;
+    pendingText.forEach(translateTextNode);
+    pendingEls.forEach(translateElement);
+    pendingRoots.forEach((root) => {
+      if (root.isConnected) translateDOM(root);
+    });
+    pendingText.clear();
+    pendingEls.clear();
+    pendingRoots.clear();
+  }
+
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(flush);
+  }
+
   // 监听动态内容（SPA 关键）：
   //   childList      — 新增节点
   //   characterData  — Angular 直接改写文本节点（改回英文后自动重译）
@@ -583,21 +625,22 @@ if (typeof document !== "undefined") {
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
-        translateTextNode(mutation.target);
+        pendingText.add(mutation.target);
       } else if (mutation.type === "attributes") {
         if (mutation.target && mutation.target.nodeType === Node.ELEMENT_NODE) {
-          translateElement(mutation.target);
+          pendingEls.add(mutation.target);
         }
       } else if (mutation.type === "childList") {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.TEXT_NODE) {
-            translateTextNode(node);
+            pendingText.add(node);
           } else if (node.nodeType === Node.ELEMENT_NODE) {
-            translateDOM(node);
+            pendingRoots.add(node);
           }
         }
       }
     }
+    schedule();
   });
 
   observer.observe(document.body, {
