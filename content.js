@@ -6,7 +6,7 @@
 //   2. 前缀规则：处理 "Release date: 9月 2, 2026" 这类动态拼接文本
 //   3. 正则规则：处理相对时间、分页、价格行等动态文本（仅限短文本，避免误伤对话内容）
 //   4. token 兜底替换：Input:/Output: 等无法整句匹配的片段
-//   5. 属性翻译：placeholder / aria-label / title / data-tooltip
+//   5. 属性翻译：仅 placeholder（title/aria-label 会与 tooltip/无障碍系统反馈循环，已停用）
 //   6. characterData 监听：Angular 重新渲染把文本改回英文后自动重译
 //   7. 防重复/防循环：已含中文的文本直接跳过
 //
@@ -513,7 +513,10 @@ function translateText(text) {
 
 if (typeof document !== "undefined") {
 
-  const TRANSLATABLE_ATTRS = ["placeholder", "aria-label", "title", "data-tooltip"];
+  // 仅翻译 placeholder（静态、零循环风险）。
+  // title / aria-label / data-tooltip 会被页面 tooltip 与无障碍系统动态读写，
+  // 翻译后又被系统改回英文，形成反馈循环，导致鼠标悬停（如“用户设置”菜单）时页面卡死。
+  const TRANSLATABLE_ATTRS = ["placeholder"];
   const ATTR_SELECTOR = TRANSLATABLE_ATTRS.map((a) => `[${a}]`).join(",");
   // 流式回复/长文本会随每次 characterData 变更被反复全量处理，导致 O(n²) 卡顿；
   // 超过此长度的文本视为内容（而非 UI 标签），跳过翻译。
