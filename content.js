@@ -6,7 +6,7 @@
 //   2. 前缀规则：处理 "Release date: 9月 2, 2026" 这类动态拼接文本
 //   3. 正则规则：处理相对时间、分页、价格行等动态文本（仅限短文本，避免误伤对话内容）
 //   4. token 兜底替换：Input:/Output: 等无法整句匹配的片段
-//   5. 属性翻译：仅 placeholder（title/aria-label 会与 tooltip/无障碍系统反馈循环，已停用）
+//   5. 属性翻译：placeholder/aria-label/title/data-tooltip（一次性翻译，不监听属性变化，规避 tooltip 反馈循环）
 //   6. characterData 监听：Angular 重新渲染把文本改回英文后自动重译
 //   7. 防重复/防循环：已含中文的文本直接跳过
 //
@@ -27,7 +27,7 @@ const dictionary = {
 
   // === 侧边栏与全局导航 ===
   "Home": "首页",
-  "Playground": "游乐场",
+  "Playground": "实验场",
   "Explore": "探索",
   "History": "历史记录",
   "Build": "构建",
@@ -51,6 +51,8 @@ const dictionary = {
   "Upgrade to unlock more": "升级以解锁更多",
   "Access higher limits, Pro models, and more.": "获取更高配额、Pro 模型等。",
   "View more actions": "更多操作",
+  "More options": "更多选项",
+  "Manage": "管理",
 
   // === 顶部导航与产品菜单 ===
   "Products and apps": "产品与应用",
@@ -67,6 +69,7 @@ const dictionary = {
   "OK, got it": "知道了",
   "Learn more": "了解更多",
   "Learn more.": "了解更多。",
+  "Learn more about how Google uses cookies. Opens in a new tab.": "了解 Google 如何使用 Cookie（在新标签页中打开）。",
   "Skip to main content": "跳转到主要内容",
   "Loading": "加载中",
   "Error": "错误",
@@ -80,15 +83,18 @@ const dictionary = {
   "Link an API key to unlock Antigravity Agent Preview": "关联 API 密钥以解锁 Antigravity Agent Preview",
   "Antigravity Agent Preview is available via an API key. Link an API key to get started.": "Antigravity Agent Preview 需通过 API 密钥使用，关联一个 API 密钥即可开始。",
   "Link API Key": "关联 API 密钥",
+  "Antigravity Agent Preview": "Antigravity 智能体预览",
   "Drop files here": "将文件拖放到此处",
   "Enter a prompt": "输入提示词",
   "This agent can execute code, take real actions, and use large number of tokens. You can stop the agent at any time.": "此智能体可以执行代码、执行真实操作并消耗大量词元。你可以随时停止它。",
   "Set up token cap": "设置词元上限",
   "Collapse agent disclaimer": "折叠智能体提示",
+  "Show agent disclaimer": "显示智能体提示",
   "Insert images or files": "插入图片或文件",
   "No API key selected": "未选择 API 密钥",
   "Open tools menu": "打开工具菜单",
   "Speech to text": "语音转文本",
+  "Scroll left": "向左滚动",
   "Scroll right": "向右滚动",
   "You need to create and run a prompt in order to share it": "需要先创建并运行提示词才能分享",
 
@@ -96,6 +102,7 @@ const dictionary = {
   "Tools": "工具",
   "Lets Gemini use code to solve complex tasks": "让 Gemini 用代码解决复杂任务",
   "Use Google Search": "使用 Google 搜索",
+  "Google Search": "Google 搜索",
   "Browse the url context": "浏览 URL 上下文",
   "Filesystem tools": "文件系统工具",
   "Filesystem tools are always enabled for this agent": "此智能体始终启用文件系统工具",
@@ -293,6 +300,9 @@ const dictionary = {
   "Created by you": "你创建的",
   "Recent": "最近",
   "Recents": "最近",
+  "Select library view": "选择库视图",
+  "Open in Drive": "在云端硬盘中打开",
+  "Click to clear search query": "点击清除搜索内容",
 
   // === Build (构建) 页面与应用库 ===
   "Start": "开始",
@@ -353,6 +363,16 @@ const dictionary = {
   "Summarize & extract info from video with Gemini 3.1 Pro": "使用 Gemini 3.1 Pro 汇总和提取视频信息",
   "Audio transcription with Gemini 3.5 Transcribe": "使用 Gemini 3.5 Transcribe 转录音频",
   "Extended reasoning for complex queries with Gemini 3.1 Pro": "使用 Gemini 3.1 Pro 对复杂查询进行深度推理",
+
+  // === Google 集成标题（Build 页集成卡片） ===
+  "Google Drive": "Google 云端硬盘",
+  "Google Sheets": "Google 表格",
+  "Google Docs": "Google 文档",
+  "Google Slides": "Google 幻灯片",
+  "Google Tasks": "Google 任务",
+  "Google Calendar": "Google 日历",
+  "Google Forms": "Google 表单",
+  "Contacts": "通讯录",
 
   // === Google 集成描述（Build 页集成卡片） ===
   "Access Drive files and folders": "访问云端硬盘文件和文件夹",
@@ -426,6 +446,7 @@ const dictionary = {
 // ==================== 2. 前缀规则 ====================
 // 处理动态拼接文本，例如 "Release date: 9月 2, 2026"
 const prefixRules = [
+  ["Search (", "搜索 ("],
   ["Release date: ", "发布日期："],
   ["Knowledge cut off: ", "知识截止日期："],
   ["All context lengths", "所有上下文长度"],
@@ -464,7 +485,9 @@ function containsChinese(s) {
 }
 
 function normalizeKey(s) {
-  return s.replace(APOSTROPHE_RE, "'");
+  // 撇号归一化 + 连续空白（含换行）归一化为单个空格，
+  // 使 "Submit: Ctrl + Enter\nNewline: Enter" 这类带换行的文本能命中词典（词典 key 用空格分隔）
+  return s.replace(APOSTROPHE_RE, "'").replace(/\s+/g, " ");
 }
 
 // 归一化撇号后的词典（弯撇号 ' 与直撇号 ' 互通）
@@ -513,10 +536,13 @@ function translateText(text) {
 
 if (typeof document !== "undefined") {
 
-  // 仅翻译 placeholder（静态、零循环风险）。
-  // title / aria-label / data-tooltip 会被页面 tooltip 与无障碍系统动态读写，
-  // 翻译后又被系统改回英文，形成反馈循环，导致鼠标悬停（如“用户设置”菜单）时页面卡死。
-  const TRANSLATABLE_ATTRS = ["placeholder"];
+  // 翻译 placeholder / aria-label / title / data-tooltip（覆盖图标按钮的工具提示）。
+  // 此前卡死的根因是“监听 attributes 变化”——翻译 write 后又被页面 tooltip 系统读回英文，
+  // 二者互相覆盖形成反馈循环。现在改为仅在初始扫描 + 新增节点(childList) + 延迟兜底重扫时
+  // 一次性翻译这些属性，不监听其属性变化，故不会循环、不会卡死。
+  // 仅 placeholder 保留属性监听（静态属性，无循环风险），用于动态写入的占位符。
+  const TRANSLATABLE_ATTRS = ["placeholder", "aria-label", "title", "data-tooltip"];
+  const OBSERVED_ATTRS = ["placeholder"];
   const ATTR_SELECTOR = TRANSLATABLE_ATTRS.map((a) => `[${a}]`).join(",");
   // 流式回复/长文本会随每次 characterData 变更被反复全量处理，导致 O(n²) 卡顿；
   // 超过此长度的文本视为内容（而非 UI 标签），跳过翻译。
@@ -527,12 +553,23 @@ if (typeof document !== "undefined") {
     return el.isContentEditable || /^(TEXTAREA|INPUT)$/.test(el.tagName || "");
   }
 
+  // Material 图标字体：文本内容是图标连字名（如 "menu_open"/"search"/"code"），
+  // 不能被翻译，否则会破坏图标渲染。
+  function isIconText(node) {
+    const p = node.parentElement;
+    if (!p || !p.getAttribute) return false;
+    const cls = p.getAttribute("class");
+    return typeof cls === "string" && /material-symbols|material-icons/i.test(cls);
+  }
+
   // 翻译单个文本节点（保留首尾空白与图标前缀）
   function translateTextNode(node) {
     const original = node.nodeValue;
     if (!original || !original.trim()) return;
     if (original.length > MAX_TEXT_LEN) return; // 内容文本（流式回复等），跳过
     if (containsChinese(original)) return; // 已是中文（或已被翻译），防循环
+
+    if (isIconText(node)) return; // 图标字体名，不翻译
 
     // 用户正在输入/编辑的区域内的文本跳过
     const parent = node.parentNode;
@@ -618,13 +655,16 @@ if (typeof document !== "undefined") {
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(flush);
+    // 微任务比 requestAnimationFrame 更可靠：rAF 依赖渲染帧，整页刷新/后台期间
+    // 可能无渲染帧，导致翻译停滞（表现为切页面后大量内容仍是英文）。
+    if (typeof queueMicrotask === "function") queueMicrotask(flush);
+    else Promise.resolve().then(flush);
   }
 
   // 监听动态内容（SPA 关键）：
   //   childList      — 新增节点
   //   characterData  — Angular 直接改写文本节点（改回英文后自动重译）
-  //   attributes     — 动态写入的 placeholder / aria-label / title
+  //   attributes     — 仅动态写入的 placeholder（aria-label/title/data-tooltip 不监听，避免反馈循环）
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
@@ -651,6 +691,10 @@ if (typeof document !== "undefined") {
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: TRANSLATABLE_ATTRS
+    attributeFilter: OBSERVED_ATTRS
   });
+
+  // 兜底：Angular 应用可能延迟挂载；整页刷新/路由切换后，主体内容可能在
+  // observer 首次调度之后才渲染。延迟多次全量重扫，确保不漏翻。
+  [800, 2000, 4000].forEach((ms) => setTimeout(() => translateDOM(document.body), ms));
 }

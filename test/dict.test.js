@@ -100,6 +100,17 @@ const samples = [
   "Points to gemini-3.8-flash",
   "Created 2026年5月4日",
   "Items per page:",
+  // 换行归一的动态文本（引擎 normalizeKey 会把 \n 归一化为空格）
+  "Submit: Ctrl + Enter\nNewline: Enter",
+  "Submit: Enter\nNewline: Shift + Enter",
+  "API pricing per 1M tokens.\nUsage in AI Studio UI is free of charge when no API key is selected",
+  "Antigravity Agent Preview",
+  "Google Search",
+  // 图标按钮 aria-label / 工具提示
+  "More options", "Show agent disclaimer", "Scroll left", "Select library view",
+  "Open in Drive", "Click to clear search query",
+  "Learn more about how Google uses cookies. Opens in a new tab.",
+  "Search (Ctrl /)",
 ];
 
 // 不应被翻译的内容（防误伤检查）
