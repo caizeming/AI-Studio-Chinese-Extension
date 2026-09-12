@@ -6,7 +6,7 @@
 //   2. 前缀规则：处理 "Release date: 9月 2, 2026" 这类动态拼接文本
 //   3. 正则规则：处理相对时间、分页、价格行等动态文本（仅限短文本，避免误伤对话内容）
 //   4. token 兜底替换：Input:/Output: 等无法整句匹配的片段
-//   5. 属性翻译：placeholder/aria-label/title/data-tooltip（一次性翻译，不监听属性变化，规避 tooltip 反馈循环）
+//   5. 属性翻译：仅 placeholder（title/aria-label/data-tooltip 与 tooltip 系统冲突会卡死，已禁用）
 //   6. characterData 监听：Angular 重新渲染把文本改回英文后自动重译
 //   7. 防重复/防循环：已含中文的文本直接跳过
 //
@@ -536,13 +536,11 @@ function translateText(text) {
 
 if (typeof document !== "undefined") {
 
-  // 翻译 placeholder / aria-label / title / data-tooltip（覆盖图标按钮的工具提示）。
-  // 此前卡死的根因是“监听 attributes 变化”——翻译 write 后又被页面 tooltip 系统读回英文，
-  // 二者互相覆盖形成反馈循环。现在改为仅在初始扫描 + 新增节点(childList) + 延迟兜底重扫时
-  // 一次性翻译这些属性，不监听其属性变化，故不会循环、不会卡死。
-  // 仅 placeholder 保留属性监听（静态属性，无循环风险），用于动态写入的占位符。
-  const TRANSLATABLE_ATTRS = ["placeholder", "aria-label", "title", "data-tooltip"];
-  const OBSERVED_ATTRS = ["placeholder"];
+  // 仅翻译 placeholder。
+  // title / aria-label / data-tooltip 必须禁用：AI Studio 的 tooltip 系统在鼠标悬停时会
+  // 动态读写这些属性，一旦被改写就会与其形成反馈循环，导致靠近图标按钮（如“用户设置”）时
+  // 页面卡死。经验证这与是否监听属性变化无关——只要改写这些属性就会触发，故彻底不翻译。
+  const TRANSLATABLE_ATTRS = ["placeholder"];
   const ATTR_SELECTOR = TRANSLATABLE_ATTRS.map((a) => `[${a}]`).join(",");
   // 流式回复/长文本会随每次 characterData 变更被反复全量处理，导致 O(n²) 卡顿；
   // 超过此长度的文本视为内容（而非 UI 标签），跳过翻译。
@@ -664,7 +662,7 @@ if (typeof document !== "undefined") {
   // 监听动态内容（SPA 关键）：
   //   childList      — 新增节点
   //   characterData  — Angular 直接改写文本节点（改回英文后自动重译）
-  //   attributes     — 仅动态写入的 placeholder（aria-label/title/data-tooltip 不监听，避免反馈循环）
+  //   attributes     — 动态写入的 placeholder
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "characterData") {
@@ -691,7 +689,7 @@ if (typeof document !== "undefined") {
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: OBSERVED_ATTRS
+    attributeFilter: TRANSLATABLE_ATTRS
   });
 
   // 兜底：Angular 应用可能延迟挂载；整页刷新/路由切换后，主体内容可能在
