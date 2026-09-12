@@ -638,8 +638,13 @@ if (typeof document !== "undefined") {
   const pendingRoots = new Set();
   let scheduled = false;
 
+  let rafId = 0;
+  let flushTimer = 0;
+
   function flush() {
     scheduled = false;
+    cancelAnimationFrame(rafId);
+    clearTimeout(flushTimer);
     pendingText.forEach(translateTextNode);
     pendingEls.forEach(translateElement);
     pendingRoots.forEach((root) => {
@@ -653,10 +658,16 @@ if (typeof document !== "undefined") {
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    // 微任务比 requestAnimationFrame 更可靠：rAF 依赖渲染帧，整页刷新/后台期间
-    // 可能无渲染帧，导致翻译停滞（表现为切页面后大量内容仍是英文）。
-    if (typeof queueMicrotask === "function") queueMicrotask(flush);
-    else Promise.resolve().then(flush);
+    // 用 requestAnimationFrame 而非微任务调度：微任务会在每次 mutation 后同步、
+    // 无间隔地触发 flush，一旦与页面 tooltip/组件在悬停时的重渲染形成
+    // “翻译 → 触发 mutation → 再翻译”的反馈循环，微任务队列永不退出，
+    // 直接占死主线程（即“鼠标靠近用户设置就卡死”）。rAF 每帧最多执行一次，
+    // 帧间主线程仍能处理输入事件，即便短暂循环也会随鼠标移开而自然终止。
+    rafId = requestAnimationFrame(flush);
+    // 兜底：后台标签页/整页刷新阶段可能长时间无渲染帧，用 setTimeout 强制 flush，
+    // 避免因 rAF 依赖渲染帧导致翻译停滞（切页面后大量内容未翻译）。
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, 250);
   }
 
   // 监听动态内容（SPA 关键）：
